@@ -1,0 +1,125 @@
+name: tiktokup
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    container_name: tiktokup-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-tiktokup}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-tiktokup_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-tiktokup}
+      TZ: UTC
+    expose:
+      - "5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-tiktokup} -d $${POSTGRES_DB:-tiktokup}"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    networks:
+      - tiktokup-net
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: production
+    container_name: tiktokup-backend
+    restart: unless-stopped
+    environment:
+      APP_NAME: ${APP_NAME:-tiktokup-backend}
+      APP_VERSION: ${APP_VERSION:-0.1.0}
+      APP_ENV: ${APP_ENV:-development}
+      PORT: 8080
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${POSTGRES_USER:-tiktokup}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-tiktokup_secret}
+      DB_NAME: ${POSTGRES_DB:-tiktokup}
+      DB_SSLMODE: ${POSTGRES_SSLMODE:-disable}
+      DB_MAX_CONNS: ${DB_MAX_CONNS:-10}
+      DB_MIN_CONNS: ${DB_MIN_CONNS:-2}
+      DB_AUTO_MIGRATE: ${DB_AUTO_MIGRATE:-true}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:8000,http://localhost:3000}
+      SERVER_READ_TIMEOUT_SECONDS: ${SERVER_READ_TIMEOUT_SECONDS:-15}
+      SERVER_WRITE_TIMEOUT_SECONDS: ${SERVER_WRITE_TIMEOUT_SECONDS:-30}
+      SERVER_IDLE_TIMEOUT_SECONDS: ${SERVER_IDLE_TIMEOUT_SECONDS:-60}
+      SERVER_SHUTDOWN_TIMEOUT_SECONDS: ${SERVER_SHUTDOWN_TIMEOUT_SECONDS:-10}
+    expose:
+      - "8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    networks:
+      - tiktokup-net
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: production
+      args:
+        NEXT_PUBLIC_APP_NAME: ${NEXT_PUBLIC_APP_NAME:-TikTokUp}
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api}
+    container_name: tiktokup-frontend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+      NEXT_PUBLIC_APP_NAME: ${NEXT_PUBLIC_APP_NAME:-TikTokUp}
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api}
+      INTERNAL_API_URL: ${INTERNAL_API_URL:-http://backend:8080}
+    expose:
+      - "3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    networks:
+      - tiktokup-net
+
+  nginx:
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    container_name: tiktokup-nginx
+    restart: unless-stopped
+    ports:
+      - "${NGINX_PORT:-8000}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/nginx-health"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    networks:
+      - tiktokup-net
+
+volumes:
+  postgres_data:
+
+networks:
+  tiktokup-net:
+    driver: bridge
