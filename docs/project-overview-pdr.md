@@ -17,6 +17,7 @@
 | :--- | :--- | :--- | :--- |
 | **Edge / Reverse Proxy** | Nginx | `nginx:alpine` | Nhẹ, hiệu năng cao, gom toàn bộ traffic vào 1 entrypoint duy nhất, hỗ trợ Gzip, rate limiting, security headers và WebSocket/HMR. |
 | **Backend API** | Golang | `golang:1.26-alpine` (build) / `alpine:3.21` (runtime) | Hiệu năng cao, tiêu thụ RAM thấp, binary tĩnh gọn nhẹ, standard library `net/http`, `log/slog` và driver `pgx/v5` hiệu suất cao. |
+| **Python Runtime / Service** | Python + FastAPI | `python:3.13-slim` (Python `3.13.18`) | Sẵn sàng cho xử lý media, AI/ML, automation và script nền; đóng gói bằng `/opt/venv`, FastAPI + Uvicorn + `psycopg[binary]`. |
 | **Database** | PostgreSQL | `postgres:18-alpine` (PostgreSQL `18.6`) | Cơ sở dữ liệu quan hệ mạnh mẽ, hỗ trợ JSONB, ACID chuẩn mực, lưu trữ bền vững bằng named volume và hệ thống migration tích hợp sẵn. |
 | **Frontend Web** | Next.js + React + TypeScript | Next.js `16.4.6`, React `19.3.0`, TypeScript `5`, `node:22-alpine` | App Router + React Server Components (RSC), build `standalone` tối ưu cho Docker, kiểm soát kiểu dữ liệu chặt chẽ. |
 | **UI System** | Shadcn UI + Tailwind CSS | Shadcn UI `4.23.1` (`base-nova`), Tailwind CSS `4.3.3`, `@base-ui/react` | Mã nguồn component thuộc sở hữu dự án, dễ tùy biến theo design system, hỗ trợ Dark/Light mode và chuẩn accessibility. |
@@ -29,8 +30,9 @@
 ### 3.1. Trong phạm vi hiện tại (Phase 0 — Đã triển khai)
 - Hạ tầng Docker Compose cho cả **Production-like** (`docker-compose.yml`) và **Development hot-reload** (`docker-compose.dev.yml`).
 - Backend Go 1.26 với cấu trúc Clean/Layered (`cmd/`, `internal/`, `migrations/`, `pkg/`), kết nối **PostgreSQL 18** bằng `pgx/v5` connection pool, auto-migration giao dịch (`schema_migrations`), middleware chuẩn (`Recover`, `RequestID`, `Logger`, `CORS`), API response envelope thống nhất và hệ thống endpoint kiểm tra sức khỏe (`/health`, `/api/v1/health`, `/api/v1/ready`, `/api/v1/info`).
+- Service **Python 3.13** (`python:3.13-slim`, `/opt/venv`) chạy nội bộ tại `python:8000` (FastAPI + Uvicorn + `psycopg[binary]`), hỗ trợ cả gọi API nội bộ từ Go Backend lẫn chạy CLI/scripts qua Docker (`make python-run`), kèm kiểm thử `ruff` và `pytest`.
 - Cơ sở dữ liệu **PostgreSQL 18** (`postgres:18-alpine`) chạy cô lập trong Docker network `tiktokup-net` với persistent volume `postgres_data:/var/lib/postgresql` và healthcheck `pg_isready`.
-- Frontend Next.js 16 + TypeScript + Tailwind CSS v4 + Shadcn UI (12 component nền tảng), hỗ trợ Light/Dark/System theme và trang **System Telemetry Dashboard** kiểm chứng kết nối live từ trình duyệt → Nginx → Go 1.26 Backend → PostgreSQL 18.
+- Frontend Next.js 16 + TypeScript + Tailwind CSS v4 + Shadcn UI (12 component nền tảng), hỗ trợ Light/Dark/System theme và trang **System Telemetry Dashboard** kiểm chứng kết nối live từ trình duyệt → Nginx → Go 1.26 Backend → PostgreSQL 18 & Python 3.13.
 - Nginx Reverse Proxy định tuyến `/api/*` → Backend, `/*` → Frontend, tối ưu cache tài sản tĩnh `/_next/static/*`, hỗ trợ WebSocket HMR và rate limiting cơ bản.
 - Bộ tài liệu kỹ thuật và sản phẩm hoàn chỉnh trong thư mục `docs/`.
 
@@ -56,9 +58,9 @@
 
 ## 5. Tiêu chí nghiệm thu (Acceptance Criteria — Base v0.1.0)
 
-1. `docker compose up -d --build --wait` khởi động thành công cả 4 container (`tiktokup-postgres`, `tiktokup-backend`, `tiktokup-frontend`, `tiktokup-nginx`) với trạng thái `healthy`.
-2. Truy cập `http://localhost:${NGINX_PORT}` trả về giao diện TikTokUp Base Platform (HTTP 200) và hiển thị trực tiếp thông số runtime từ Go 1.26 backend cùng trạng thái kết nối PostgreSQL 18.
-3. Các endpoint `/nginx-health`, `/health`, `/api/v1/health`, `/api/v1/ready` (`checks.postgres = "ok"`), `/api/v1/info` trả về JSON chuẩn theo envelope và header `X-Request-ID`.
+1. `docker compose up -d --build --wait` khởi động thành công cả 5 container (`tiktokup-postgres`, `tiktokup-python`, `tiktokup-backend`, `tiktokup-frontend`, `tiktokup-nginx`) với trạng thái `healthy`.
+2. Truy cập `http://localhost:${NGINX_PORT}` trả về giao diện TikTokUp Base Platform (HTTP 200) và hiển thị trực tiếp thông số runtime từ Go 1.26 backend cùng trạng thái kết nối PostgreSQL 18 và Python 3.13.
+3. Các endpoint `/nginx-health`, `/health`, `/api/v1/health`, `/api/v1/ready` (`checks.postgres = "ok"`, `checks.python = "ok"`), `/api/v1/info` trả về JSON chuẩn theo envelope và header `X-Request-ID`.
 4. Endpoint không tồn tại (`/api/v1/unknown`) trả về HTTP 404 với JSON error envelope nhất quán.
 5. Toàn bộ unit tests backend (`go vet`, `go test`) và kiểm tra tĩnh frontend (`tsc --noEmit`, `eslint`) đều pass 100% thông qua Docker.
 

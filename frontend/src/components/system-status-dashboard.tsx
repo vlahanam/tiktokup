@@ -11,6 +11,7 @@ import {
   RefreshCwIcon,
   ServerIcon,
   ShieldCheckIcon,
+  TerminalIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -150,6 +151,7 @@ export function SystemStatusDashboard() {
 
   const isHealthy = !state.error && state.health?.status === "ok";
   const isDbConnected = !state.error && Boolean(state.info?.database?.connected);
+  const isPythonConnected = !state.error && Boolean(state.info?.python?.connected);
 
   return (
     <div className="space-y-6">
@@ -159,7 +161,7 @@ export function SystemStatusDashboard() {
             System Telemetry
           </h2>
           <p className="text-sm text-muted-foreground">
-            Live verification of Nginx → Go 1.26 Backend → PostgreSQL 18 connectivity.
+            Live verification of Nginx → Go 1.26 Backend → PostgreSQL 18 & Python 3.13 connectivity.
           </p>
         </div>
 
@@ -181,7 +183,7 @@ export function SystemStatusDashboard() {
         </Alert>
       )}
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -286,6 +288,59 @@ export function SystemStatusDashboard() {
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Network</span>
                   <span className="font-mono">postgres:5432</span>
+                </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <TerminalIcon className="size-4 text-muted-foreground" />
+              Python
+            </CardTitle>
+            <CardDescription>FastAPI · psycopg · Scripts</CardDescription>
+            <CardAction>
+              {state.loading ? (
+                <Skeleton className="h-5 w-20 rounded-full" />
+              ) : (
+                <Badge variant={isPythonConnected ? "default" : "destructive"}>
+                  {isPythonConnected ? (
+                    <>
+                      <CheckCircle2Icon className="size-3" />
+                      Connected
+                    </>
+                  ) : (
+                    "Offline"
+                  )}
+                </Badge>
+              )}
+            </CardAction>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            {state.loading ? (
+              <div className="space-y-2">
+                <Skeleton className="h-4 w-3/4" />
+                <Skeleton className="h-4 w-1/2" />
+              </div>
+            ) : (
+              <>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Runtime</span>
+                  <span className="font-mono font-medium">
+                    {state.info?.python?.version ?? "Python 3.13"}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Probe</span>
+                  <span className="font-mono">
+                    {state.ready?.checks?.python ?? "—"}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Network</span>
+                  <span className="font-mono">python:8000</span>
                 </div>
               </>
             )}

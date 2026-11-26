@@ -2,19 +2,21 @@
 
 ## Project Overview
 TikTokUp is a 100% Dockerized full-stack web platform:
-- **Backend (`backend/`)**: Go `1.26` (`module tiktokup/backend`), stdlib `net/http` + `log/slog` + `pgx/v5` (`v5.13.0`), layered architecture (`cmd/{server,migrate}`, `internal/{config,database,handler,middleware,router,server}`, `migrations/`, `pkg/response`).
+- **Backend (`backend/`)**: Go `1.26` (`module tiktokup/backend`), stdlib `net/http` + `log/slog` + `pgx/v5` (`v5.13.0`), layered architecture (`cmd/{server,migrate}`, `internal/{config,database,handler,middleware,pythonclient,router,server}`, `migrations/`, `pkg/response`).
+- **Python Service (`python/`)**: Python `3.13.18` (`python:3.13-slim`), isolated `/opt/venv`, FastAPI + Uvicorn + `psycopg[binary]` + standalone `scripts/` runner + `pytest` & `ruff` (`pyproject.toml`), reachable internally at `http://python:8000`.
 - **Database (`postgres`)**: PostgreSQL `18` (`postgres:18-alpine`, `18.6`), persistent volume `postgres_data:/var/lib/postgresql`, embedded transactional SQL migrations tracked in `schema_migrations`.
 - **Frontend (`frontend/`)**: Next.js `16.4.6` (App Router, RSC, `output: "standalone"`), React `19.3.0`, TypeScript `5`, Tailwind CSS `4.3.3`, Shadcn UI `4.23.1` (`style: "base-nova"`, `@base-ui/react`).
 - **Reverse Proxy (`nginx/`)**: `nginx:alpine` routing `/api/*` and `/health` to `backend:8080`, and `/*` to `frontend:3000`.
 
 ## Toolchain Rule (Docker-First)
-Do **not** assume Go, Node.js, or npm are installed on the host. Run all language commands inside Docker or via `Makefile`:
+Do **not** assume Go, Python, Node.js, or npm are installed on the host. Run all language commands inside Docker or via `Makefile`:
 - Backend checks: `make test-backend` (`golang:1.26-alpine` running `go vet ./... && go test -v -count=1 ./...`)
+- Python checks & scripts: `make test-python` (`ruff check . && pytest -v`), `make python-run SCRIPT=scripts/example.py`, `make python-shell`
 - Frontend checks: `make typecheck-frontend` & `make lint-frontend` (`node:22-alpine`)
 - Database commands: `make db-status`, `make db-migrate`, `make db-shell`
 - Add Shadcn UI components: `make shadcn-add COMPONENT=<name>`
 - Start production-like stack: `docker compose up -d --build --wait`
-- Start dev hot-reload stack: `docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build` (exposes Postgres on `POSTGRES_PORT`, default `5433`)
+- Start dev hot-reload stack: `docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build` (exposes Postgres `:5433`, Python `:8002`, Backend `:8081`, Frontend `:3000`)
 
 ## Coding & Architecture Conventions
 1. **Backend (Go 1.26 + PostgreSQL 18)**:

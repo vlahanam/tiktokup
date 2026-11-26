@@ -9,6 +9,7 @@ import (
 
 	"tiktokup/backend/internal/config"
 	"tiktokup/backend/internal/database"
+	"tiktokup/backend/internal/pythonclient"
 	"tiktokup/backend/internal/router"
 	"tiktokup/backend/internal/server"
 	"tiktokup/backend/migrations"
@@ -41,7 +42,8 @@ func main() {
 		logger.Info("postgres_migrations_ready", slog.Int("applied", applied))
 	}
 
-	handler := router.New(cfg, logger, db)
+	pyClient := pythonclient.New(cfg.PythonServiceURL)
+	handler := router.New(cfg, logger, db, pyClient)
 	srv := server.New(cfg, handler, logger)
 
 	if err := srv.Run(ctx); err != nil {

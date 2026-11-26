@@ -37,6 +37,11 @@ docker compose version
    BACKEND_PORT=8081
    FRONTEND_PORT=3000
    POSTGRES_PORT=5433
+   PYTHON_PORT=8002
+
+   # Python 3.13 Service
+   PYTHON_APP_NAME=tiktokup-python
+   PYTHON_SERVICE_URL=http://python:8000
 
    # PostgreSQL 18
    POSTGRES_USER=tiktokup
@@ -63,7 +68,7 @@ docker compose version
 
 ## 3. Chế độ Production / Staging (Mặc định)
 
-Sử dụng `docker-compose.yml` với multi-stage images tối ưu (`postgres:18-alpine` với persistent volume `postgres_data:/var/lib/postgresql`, `alpine:3.21` cho Backend, `node:22-alpine` standalone cho Frontend, `nginx:alpine` cho Edge Proxy).
+Sử dụng `docker-compose.yml` với multi-stage images tối ưu (`postgres:18-alpine` với persistent volume `postgres_data:/var/lib/postgresql`, `python:3.13-slim` với `/opt/venv`, `alpine:3.21` cho Backend, `node:22-alpine` standalone cho Frontend, `nginx:alpine` cho Edge Proxy).
 
 ### Khởi chạy & chờ toàn bộ service healthy
 ```bash
@@ -76,7 +81,7 @@ make up
 ```bash
 docker compose ps
 ```
-Kết quả mong đợi: cả 4 container `tiktokup-postgres`, `tiktokup-backend`, `tiktokup-frontend`, `tiktokup-nginx` đều ở trạng thái `Up (...) (healthy)`.
+Kết quả mong đợi: cả 5 container `tiktokup-postgres`, `tiktokup-python`, `tiktokup-backend`, `tiktokup-frontend`, `tiktokup-nginx` đều ở trạng thái `Up (...) (healthy)`.
 
 ### Kiểm tra kết nối End-to-End
 ```bash
@@ -107,6 +112,7 @@ make down
 
 File `docker-compose.dev.yml` ghi đè `docker-compose.yml` để bật:
 - **PostgreSQL 18**: mở cổng `${POSTGRES_PORT:-5433}:5432` để kết nối trực tiếp từ các công cụ như DBeaver, TablePlus, DataGrip hoặc `psql` mà không xung đột cổng `5432` trên host.
+- **Python 3.13**: target `dev` chạy `uvicorn --reload`, mount `./python:/app`, mở cổng `${PYTHON_PORT:-8002}:8000` (có thể mở Swagger UI tại `http://localhost:8002/docs`).
 - **Backend**: target `dev` sử dụng **Air** (`.air.toml`) tự động rebuild Go 1.26 khi lưu file, mở cổng `${BACKEND_PORT:-8081}`.
 - **Frontend**: target `dev` chạy `next dev` với `WATCHPACK_POLLING=true` và WebSocket HMR đi qua Nginx, mở cổng `${FRONTEND_PORT:-3000}`.
 - **Nginx**: mount trực tiếp `./nginx/nginx.conf` và `./nginx/conf.d` (read-only).
@@ -132,13 +138,20 @@ make dev-down
 Tất cả lệnh kiểm thử và quản lý package đều chạy trong container tạm thời (`--rm`):
 
 ```bash
-# Chạy toàn bộ: Go vet + Go unit tests + TypeScript typecheck + ESLint
+# Chạy toàn bộ: Go vet/tests + Python ruff/pytest + TypeScript typecheck + ESLint
 make test
 
 # Hoặc chạy riêng lẻ:
 make test-backend
+make test-python
 make typecheck-frontend
 make lint-frontend
+
+# Làm việc với Python trong Docker (không cần cài Python trên host)
+make python-run SCRIPT=scripts/example.py   # Chạy script mẫu kiểm tra Python + Postgres
+make python-shell                           # Mở bash shell vào container tiktokup-python
+# Thêm thư viện Python mới: bổ sung vào python/pyproject.toml rồi chạy:
+docker compose up -d --build python
 
 # Thêm Shadcn UI component mới (ví dụ: table)
 make shadcn-add COMPONENT=table

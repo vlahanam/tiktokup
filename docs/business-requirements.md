@@ -36,6 +36,7 @@ Dự án **TikTokUp** hướng tới xây dựng một hệ thống web applicat
 | **FR-006** | Theme & Responsive Shell | Giao diện hỗ trợ chuyển đổi Light / Dark / System theme, responsive trên desktop & mobile, có sẵn trang Loading, Error Boundary và 404 Not Found. | Hoàn thành |
 | **FR-007** | Dockerized Dev & Prod Modes | Hỗ trợ vận hành ở 2 chế độ qua Docker Compose: Production (build tối ưu) và Development (hot-reload cho Go, Next.js và mở cổng PostgreSQL dev `5433`). | Hoàn thành |
 | **FR-008** | PostgreSQL Persistence & Migrations | Tích hợp PostgreSQL 18 (`postgres:18-alpine`) với volume bền vững, `pgx/v5` connection pool và hệ thống SQL migration giao dịch (`schema_migrations`). | Hoàn thành |
+| **FR-009** | Dockerized Python Runtime & Service | Cài đặt sẵn Python 3.13 (`python:3.13-slim`, `/opt/venv`) với FastAPI/Uvicorn, `psycopg[binary]`, runner chạy scripts qua Docker và giao tiếp nội bộ với Go Backend. | Hoàn thành |
 
 ### 3.2. Nhóm FR-1+: Backlog nghiệp vụ mở rộng — *Dự kiến cho các Phase tiếp theo*
 

@@ -55,6 +55,7 @@ type Config struct {
 	WriteTimeout       time.Duration
 	IdleTimeout        time.Duration
 	ShutdownTimeout    time.Duration
+	PythonServiceURL   string
 	Database           DatabaseConfig
 }
 
@@ -71,6 +72,7 @@ func Load() *Config {
 		WriteTimeout:       getEnvDurationSeconds("SERVER_WRITE_TIMEOUT_SECONDS", 30),
 		IdleTimeout:        getEnvDurationSeconds("SERVER_IDLE_TIMEOUT_SECONDS", 60),
 		ShutdownTimeout:    getEnvDurationSeconds("SERVER_SHUTDOWN_TIMEOUT_SECONDS", 10),
+		PythonServiceURL:   strings.TrimRight(getEnv("PYTHON_SERVICE_URL", "http://python:8000"), "/"),
 		Database: DatabaseConfig{
 			URL:         getEnv("DATABASE_URL", ""),
 			Host:        getEnv("DB_HOST", "postgres"),

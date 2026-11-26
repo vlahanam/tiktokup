@@ -11,9 +11,9 @@ import (
 )
 
 // New builds the HTTP handler tree with versioned routes and standard middleware.
-func New(cfg *config.Config, logger *slog.Logger, db handler.DatabaseInspector) http.Handler {
+func New(cfg *config.Config, logger *slog.Logger, db handler.DatabaseInspector, py handler.PythonInspector) http.Handler {
 	mux := http.NewServeMux()
-	sys := handler.NewSystemHandler(cfg, db)
+	sys := handler.NewSystemHandler(cfg, db, py)
 
 	// Container & orchestrator probes
 	mux.HandleFunc("GET /health", sys.Health)

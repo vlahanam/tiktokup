@@ -1,12 +1,13 @@
 # TikTokUp
 
-Nền tảng web full-stack được đóng gói 100% bằng Docker, gồm **Golang 1.26 Backend**, **PostgreSQL 18 Database**, **Next.js 16 + TypeScript + Shadcn UI Frontend** và **Nginx Reverse Proxy**.
+Nền tảng web full-stack được đóng gói 100% bằng Docker, gồm **Golang 1.26 Backend**, **Python 3.13 Service/Runtime**, **PostgreSQL 18 Database**, **Next.js 16 + TypeScript + Shadcn UI Frontend** và **Nginx Reverse Proxy**.
 
 ## Tech Stack
 
 | Thành phần | Công nghệ | Chi tiết |
 | :--- | :--- | :--- |
 | **Backend** | Golang `1.26` | `net/http` (stdlib), `log/slog` JSON, `pgx/v5`, Embedded SQL Migrations, multi-stage `alpine:3.21` |
+| **Python Service** | Python `3.13.18` (`python:3.13-slim`) | `/opt/venv`, FastAPI + Uvicorn, `psycopg[binary]`, `scripts/` CLI runner, `pytest` + `ruff` |
 | **Database** | PostgreSQL `18` (`postgres:18-alpine`) | Persistent volume `postgres_data:/var/lib/postgresql`, `pg_isready` healthcheck, nội bộ mạng Docker |
 | **Frontend** | Next.js `16.4.6` + React `19.3` + TypeScript `5` | App Router, Tailwind CSS `4.3`, Shadcn UI `4.23` (`base-nova`), Standalone output |
 | **Reverse Proxy** | Nginx (`nginx:alpine`) | Single entrypoint, Gzip, rate limiting, security headers, WebSocket HMR |
@@ -39,16 +40,19 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 | `GET` | `/nginx-health` | Healthcheck của Nginx Reverse Proxy |
 | `GET` | `/health` | Direct liveness probe của Backend |
 | `GET` | `/api/v1/health` | Trạng thái sức khỏe và uptime của Backend |
-| `GET` | `/api/v1/ready` | Readiness probe của Backend (kiểm tra HTTP server + live ping PostgreSQL) |
-| `GET` | `/api/v1/info` | Metadata runtime Go 1.26, OS/Arch, CPU và phiên bản PostgreSQL 18 |
+| `GET` | `/api/v1/ready` | Readiness probe của Backend (HTTP server, PostgreSQL & Python service) |
+| `GET` | `/api/v1/info` | Metadata runtime Go 1.26, PostgreSQL 18 và Python 3.13 |
 
 ## Các lệnh Makefile hữu ích (100% chạy trong Docker)
 
 ```bash
-make up                  # Build và chạy stack production-like
+make up                  # Build và chạy stack production-like (5 containers)
 make down                # Dừng stack
-make dev                 # Chạy stack dev có hot-reload (Air + Next.js dev + Postgres :5433)
-make test                # Chạy Go vet + Go tests + TypeScript typecheck + ESLint
+make dev                 # Chạy stack dev có hot-reload (Air + FastAPI + Next.js + Postgres)
+make test                # Chạy Go vet/tests + Python ruff/pytest + TypeScript + ESLint
+make test-python         # Chạy Ruff lint + Pytest cho service Python trong Docker
+make python-run SCRIPT=scripts/example.py  # Chạy file script Python trong container
+make python-shell        # Mở bash shell tương tác trong container Python
 make db-status           # Kiểm tra trạng thái PostgreSQL và danh sách migrations đã chạy
 make db-migrate          # Chạy SQL migrations thông qua binary trong container backend
 make db-shell            # Mở psql shell tương tác vào PostgreSQL container

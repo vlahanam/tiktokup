@@ -33,6 +33,12 @@ export interface DatabaseInfo {
   version?: string;
 }
 
+export interface PythonRuntimeInfo {
+  service: string;
+  connected: boolean;
+  version?: string;
+}
+
 export interface SystemInfoData {
   service: string;
   version: string;
@@ -44,4 +50,5 @@ export interface SystemInfoData {
   started_at: string;
   uptime_seconds: number;
   database?: DatabaseInfo;
+  python?: PythonRuntimeInfo;
 }

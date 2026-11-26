@@ -1,4 +1,4 @@
-.PHONY: help up down restart build dev dev-down logs ps test test-backend lint-frontend typecheck-frontend shadcn-add db-shell db-status db-migrate clean
+.PHONY: help up down restart build dev dev-down logs ps test test-backend test-python lint-frontend typecheck-frontend shadcn-add db-shell db-status db-migrate python-shell python-run clean
 
 COMPOSE := docker compose
 COMPOSE_DEV := docker compose -f docker-compose.yml -f docker-compose.dev.yml
@@ -18,7 +18,7 @@ restart: ## Restart running services
 build: ## Build all Docker images
 	$(COMPOSE) build
 
-dev: ## Start development stack with hot reload (Air + Next.js dev + Postgres port 5433)
+dev: ## Start development stack with hot reload (Air + Next.js + FastAPI + Postgres)
 	$(COMPOSE_DEV) up --build
 
 dev-down: ## Stop development stack
@@ -33,13 +33,16 @@ ps: ## Show container status and health
 test-backend: ## Run Go 1.26 unit tests and go vet inside Docker
 	docker run --rm -v "$(CURDIR)/backend:/app" -w /app golang:1.26-alpine sh -c "go vet ./... && go test -v -count=1 ./..."
 
+test-python: ## Run Ruff lint and Pytest for Python service inside Docker
+	docker build -q --target dev -t tiktokup-python:test ./python >/dev/null && docker run --rm tiktokup-python:test sh -c "ruff check . && pytest -v"
+
 lint-frontend: ## Run ESLint on frontend inside Docker
 	docker run --rm -v "$(CURDIR)/frontend:/app" -w /app node:22-alpine npm run lint
 
 typecheck-frontend: ## Run TypeScript typecheck on frontend inside Docker
 	docker run --rm -v "$(CURDIR)/frontend:/app" -w /app node:22-alpine npx tsc --noEmit
 
-test: test-backend typecheck-frontend lint-frontend ## Run all backend & frontend checks via Docker
+test: test-backend test-python typecheck-frontend lint-frontend ## Run all backend, python & frontend checks via Docker
 
 shadcn-add: ## Add a Shadcn UI component via Docker (usage: make shadcn-add COMPONENT=table)
 	@test -n "$(COMPONENT)" || (echo "Usage: make shadcn-add COMPONENT=<name>" && exit 1)
@@ -53,6 +56,13 @@ db-status: ## Check PostgreSQL readiness and applied schema migrations
 
 db-migrate: ## Run SQL migrations using the backend container binary
 	$(COMPOSE) exec -T backend /app/migrate
+
+python-shell: ## Open an interactive shell inside the Python container
+	$(COMPOSE) exec python bash
+
+python-run: ## Run a Python script inside the container (usage: make python-run SCRIPT=scripts/example.py)
+	@test -n "$(SCRIPT)" || (echo "Usage: make python-run SCRIPT=scripts/example.py" && exit 1)
+	$(COMPOSE) exec -T python python "$(SCRIPT)"
 
 clean: ## Stop containers and remove volumes/build artifacts (destroys DB data!)
 	$(COMPOSE_DEV) down -v --remove-orphans

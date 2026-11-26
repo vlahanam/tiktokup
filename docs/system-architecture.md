@@ -2,7 +2,7 @@
 
 ## 1. Kiến trúc tổng thể (High-Level Architecture)
 
-**TikTokUp** áp dụng mô hình **4-Container Reverse Proxy Architecture** chạy trên một Docker bridge network riêng biệt (`tiktokup-net`). Chỉ có container **Nginx** được mở cổng ra máy host; **Frontend (Next.js)**, **Backend (Go 1.26)** và **Database (PostgreSQL 18)** đều nằm hoàn toàn trong mạng nội bộ ở chế độ production.
+**TikTokUp** áp dụng mô hình **5-Container Reverse Proxy Architecture** chạy trên một Docker bridge network riêng biệt (`tiktokup-net`). Chỉ có container **Nginx** được mở cổng ra máy host; **Frontend (Next.js)**, **Backend (Go 1.26)**, **Python Service (Python 3.13)** và **Database (PostgreSQL 18)** đều nằm hoàn toàn trong mạng nội bộ ở chế độ production.
 
 ```mermaid
 flowchart LR
@@ -13,6 +13,7 @@ flowchart LR
             Nginx["Nginx Reverse Proxy\nnginx:alpine (:80)"]
             Frontend["Next.js 16 Frontend\nnode:22-alpine (:3000)"]
             Backend["Go 1.26 Backend API\nalpine:3.21 (:8080)"]
+            Python["Python 3.13 Service\npython:3.13-slim (:8000)"]
             Postgres[("PostgreSQL 18\npostgres:18-alpine (:5432)")]
         end
         Vol[("Volume: postgres_data\n/var/lib/postgresql")]
@@ -23,12 +24,14 @@ flowchart LR
     Nginx -->|"/api/* & /health"| Backend
     Frontend -.->|"SSR Internal Fetch\nhttp://backend:8080"| Backend
     Backend -->|"pgx/v5 Pool (:5432)"| Postgres
+    Backend -->|"HTTP Internal\nhttp://python:8000"| Python
+    Python -->|"psycopg (:5432)"| Postgres
     Postgres --- Vol
 ```
 
 ### Nguyên tắc kiến trúc
 1. **Single Origin Entrypoint**: Trình duyệt chỉ giao tiếp với một origin duy nhất (Nginx). Điều này loại bỏ hầu hết rắc rối về CORS và cookie cross-site khi triển khai thực tế.
-2. **Internal Network Isolation**: Trong `docker-compose.yml`, `frontend`, `backend` và `postgres` chỉ khai báo `expose`, không bind port trực tiếp ra host (chỉ mở trong `docker-compose.dev.yml` khi cần debug hoặc kết nối DB client trực tiếp qua cổng `5433`).
+2. **Internal Network Isolation**: Trong `docker-compose.yml`, `frontend`, `backend`, `python` và `postgres` chỉ khai báo `expose`, không bind port trực tiếp ra host (chỉ mở trong `docker-compose.dev.yml` khi cần debug, xem FastAPI Swagger `:8002/docs` hoặc kết nối DB client `:5433`).
 3. **Dual API Path cho Next.js**:
    - **Browser (Client Component)** gọi `/api/v1/*` thông qua `NEXT_PUBLIC_API_URL=/api` → đi qua Nginx → `backend:8080`.
    - **Server (RSC / Route Handler)** gọi trực tiếp `INTERNAL_API_URL=http://backend:8080` qua mạng Docker nội bộ mà không cần vòng ra ngoài host.
@@ -126,16 +129,27 @@ flowchart TD
 
 ---
 
+### 3.4. Python Service & Script Runtime (`python/`)
+- **Runtime**: `python:3.13-slim` (`Python 3.13.18`) đóng gói dependencies trong virtual environment cô lập `/opt/venv` (cài đặt từ `pyproject.toml`), chạy bằng non-root user `appuser`.
+- **Dual Usage Pattern**:
+  - **Internal HTTP Microservice**: FastAPI + Uvicorn lắng nghe trên `python:8000`, cung cấp `/health`, `/ready`, `/info` với cùng JSON envelope và `X-Request-ID` propagation như Go Backend; Go Backend gọi nội bộ qua `internal/pythonclient` (`PYTHON_SERVICE_URL=http://python:8000`).
+  - **CLI / Script Runner**: Thư mục `python/scripts/` sẵn sàng chạy tác vụ batch/automation/AI trực tiếp trong container (`make python-run SCRIPT=scripts/example.py`) với quyền truy cập sẵn vào PostgreSQL và các thư viện đã cài.
+
+---
+
 ## 4. Kiến trúc Container & Healthcheck Dependencies
 
 ```mermaid
 flowchart BT
     Postgres[("tiktokup-postgres\nHEALTHCHECK: pg_isready")]
+    Python["tiktokup-python\nHEALTHCHECK: /health"]
     Backend["tiktokup-backend\nHEALTHCHECK: /health"]
     Frontend["tiktokup-frontend\nHEALTHCHECK: /"]
     Nginx["tiktokup-nginx\nHEALTHCHECK: /nginx-health"]
 
+    Python -->|"depends_on: service_healthy"| Postgres
     Backend -->|"depends_on: service_healthy"| Postgres
+    Backend -->|"depends_on: service_healthy"| Python
     Frontend -->|"depends_on: service_healthy"| Backend
     Nginx -->|"depends_on: service_healthy"| Backend
     Nginx -->|"depends_on: service_healthy"| Frontend
@@ -143,6 +157,7 @@ flowchart BT
 
 - **PostgreSQL 18 Persistence**: Image `postgres:18-alpine` khai báo `PGDATA=/var/lib/postgresql/18/docker` và volume chuẩn `/var/lib/postgresql`, do đó `docker-compose.yml` mount named volume `postgres_data:/var/lib/postgresql` đảm bảo dữ liệu bền vững qua các lần rebuild/restart.
 - **Multi-stage Dockerfiles**:
+  - `python/Dockerfile`: `base` (`python:3.13-slim`) → `builder` (tạo `/opt/venv` & cài `pyproject.toml`) → `dev` (cài `.[dev]` + `uvicorn --reload`) / `production` (non-root `appuser`, copy `/opt/venv`, `app/`, `scripts/`, healthcheck bằng stdlib `urllib.request`).
   - `backend/Dockerfile`: `base` (`golang:1.26-alpine`) → `dev` (cài `air`) / `builder` (`CGO_ENABLED=0`, build cả `/out/server` và `/out/migrate`) → `production` (`alpine:3.21`, non-root `appuser`).
   - `frontend/Dockerfile`: `base` (`node:22-alpine`) → `deps` (`npm ci`) → `dev` (`next dev`) / `builder` (`next build`) → `production` (`node:22-alpine`, non-root `nextjs`, chỉ copy `.next/standalone`, `.next/static`, `public`).
   - `nginx/Dockerfile`: `nginx:alpine`, copy `nginx.conf` và `conf.d/default.conf`, cài đặt `HEALTHCHECK`.

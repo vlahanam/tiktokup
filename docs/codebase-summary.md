@@ -14,8 +14,8 @@ tiktokup/
 ├── AGENTS.md                     # Hướng dẫn làm việc cho AI Coding Agent
 ├── Makefile                      # Các lệnh tắt chạy 100% qua Docker
 ├── README.md                     # Tài liệu khởi chạy nhanh
-├── docker-compose.yml            # Stack production-ready (postgres, backend, frontend, nginx)
-├── docker-compose.dev.yml        # Override cho dev hot-reload (Air + Next.js dev + Postgres :5433)
+├── docker-compose.yml            # Stack production-ready (postgres, python, backend, frontend, nginx)
+├── docker-compose.dev.yml        # Override cho dev hot-reload (Air + FastAPI + Next.js + Postgres)
 ├── backend/                      # Golang 1.26 API Service
 │   ├── .air.toml                 # Cấu hình hot-reload Air cho môi trường dev
 │   ├── .dockerignore
@@ -29,23 +29,25 @@ tiktokup/
 │   │       └── main.go           # Entrypoint kết nối Postgres, auto-migrate, khởi chạy HTTP server
 │   ├── internal/
 │   │   ├── config/
-│   │   │   ├── config.go         # Nạp & validate cấu hình app + DatabaseConfig/DSN
+│   │   │   ├── config.go         # Nạp & validate cấu hình app, DatabaseConfig & PythonServiceURL
 │   │   │   └── config_test.go    # Unit tests cho config & DSN
 │   │   ├── database/
 │   │   │   ├── migrate.go        # Transactional SQL migration runner (schema_migrations)
 │   │   │   ├── migrate_test.go   # Unit tests kiểm tra embedded SQL migrations
 │   │   │   └── postgres.go       # pgxpool.Pool connect (có retry), Ping, ServerVersion
 │   │   ├── handler/
-│   │   │   └── health.go         # SystemHandler: Health, Ready (ping Postgres), Info (DB metadata)
+│   │   │   └── health.go         # SystemHandler: Health, Ready (Postgres/Python), Info
 │   │   ├── middleware/
 │   │   │   ├── cors.go           # CORS & OPTIONS preflight
 │   │   │   ├── logger.go         # Structured slog access log
 │   │   │   ├── middleware_test.go # Unit tests cho RequestID, CORS, Recover
 │   │   │   ├── recover.go        # Bắt panic và trả 500 JSON
 │   │   │   └── request_id.go     # Tạo/truyền header & context X-Request-ID
+│   │   ├── pythonclient/
+│   │   │   └── client.go         # HTTP client gọi nội bộ Python service (truyền X-Request-ID)
 │   │   ├── router/
 │   │   │   ├── router.go         # Đăng ký route & nối chuỗi middleware
-│   │   │   └── router_test.go    # Tests endpoints (healthy DB + 503 khi DB lỗi)
+│   │   │   └── router_test.go    # Tests endpoints (healthy DB/Python + 503 khi DB lỗi)
 │   │   └── server/
 │   │       └── server.go         # Cấu hình http.Server & graceful shutdown
 │   ├── migrations/
@@ -55,6 +57,19 @@ tiktokup/
 │       └── response/
 │           ├── json.go           # Envelope chuẩn (OK, Created, Error, RequestID context)
 │           └── json_test.go      # Unit tests cho response helpers
+├── python/                       # Python 3.13 Service & Script Runtime
+│   ├── .dockerignore
+│   ├── Dockerfile                # Multi-stage: base, builder (/opt/venv), dev, production
+│   ├── pyproject.toml            # PEP 621 dependencies (fastapi, uvicorn, psycopg, pytest, ruff)
+│   ├── app/
+│   │   ├── __init__.py
+│   │   ├── config.py             # Settings đọc từ env & dựng PostgreSQL DSN
+│   │   ├── db.py                 # Helper kiểm tra kết nối PostgreSQL qua psycopg
+│   │   └── main.py               # FastAPI app (/health, /ready, /info), JSON logging, X-Request-ID
+│   ├── scripts/
+│   │   └── example.py            # Script CLI mẫu kiểm tra runtime Python & kết nối Postgres
+│   └── tests/
+│       └── test_app.py           # Pytest unit tests cho endpoints & error cases
 ├── frontend/                     # Next.js 16 + TypeScript + Shadcn UI
 │   ├── .dockerignore
 │   ├── Dockerfile                # Multi-stage: base, deps, dev, builder, production
@@ -191,11 +206,16 @@ Phản hồi thành công (`200 OK`):
       "engine": "postgresql",
       "connected": true,
       "version": "PostgreSQL 18.6"
+    },
+    "python": {
+      "service": "tiktokup-python",
+      "connected": true,
+      "version": "Python 3.13.18"
     }
   },
   "meta": {
     "request_id": "a1b2c3d4e5f6...",
-    "timestamp": "2026-11-26T09:03:42Z"
+    "timestamp": "2026-11-26T09:19:57Z"
   }
 }
 ```
@@ -230,6 +250,9 @@ Phản hồi lỗi (`404 Not Found` / `500 Internal Server Error`):
 | `BACKEND_PORT` | `8081` | Backend (dev) | Cổng host ánh xạ tới `:8080` khi chạy `docker-compose.dev.yml` |
 | `FRONTEND_PORT` | `3000` | Frontend (dev) | Cổng host ánh xạ tới `:3000` khi chạy `docker-compose.dev.yml` |
 | `POSTGRES_PORT` | `5433` | PostgreSQL (dev) | Cổng host ánh xạ tới `:5432` khi chạy `docker-compose.dev.yml` |
+| `PYTHON_PORT` | `8002` | Python (dev) | Cổng host ánh xạ tới `:8000` khi chạy `docker-compose.dev.yml` (Swagger tại `/docs`) |
+| `PYTHON_APP_NAME` | `tiktokup-python` | Python | Tên định danh service Python trong log & `/info` |
+| `PYTHON_SERVICE_URL` | `http://python:8000` | Backend | URL nội bộ để Go Backend gọi sang container Python |
 | `POSTGRES_USER` | `tiktokup` | Postgres & Backend | Tên user quản trị cơ sở dữ liệu |
 | `POSTGRES_PASSWORD` | `tiktokup_secret` | Postgres & Backend | Mật khẩu kết nối PostgreSQL (bắt buộc đổi trên production) |
 | `POSTGRES_DB` | `tiktokup` | Postgres & Backend | Tên database chính |

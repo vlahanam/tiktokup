@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"tiktokup/backend/internal/config"
+	"tiktokup/backend/internal/pythonclient"
 	"tiktokup/backend/pkg/response"
 )
 
@@ -16,18 +17,25 @@ type DatabaseInspector interface {
 	ServerVersion(ctx context.Context) (string, error)
 }
 
+// PythonInspector abstracts internal Python service metadata checks.
+type PythonInspector interface {
+	Info(ctx context.Context) (*pythonclient.ServiceInfo, error)
+}
+
 // SystemHandler handles health, readiness, and service metadata endpoints.
 type SystemHandler struct {
 	cfg       *config.Config
 	db        DatabaseInspector
+	python    PythonInspector
 	startedAt time.Time
 }
 
 // NewSystemHandler constructs a SystemHandler anchored to startup time.
-func NewSystemHandler(cfg *config.Config, db DatabaseInspector) *SystemHandler {
+func NewSystemHandler(cfg *config.Config, db DatabaseInspector, python PythonInspector) *SystemHandler {
 	return &SystemHandler{
 		cfg:       cfg,
 		db:        db,
+		python:    python,
 		startedAt: time.Now().UTC(),
 	}
 }
@@ -53,18 +61,26 @@ type DatabaseInfo struct {
 	Version   string `json:"version,omitempty"`
 }
 
+// PythonRuntimeInfo exposes internal Python service status and runtime version.
+type PythonRuntimeInfo struct {
+	Service   string `json:"service"`
+	Connected bool   `json:"connected"`
+	Version   string `json:"version,omitempty"`
+}
+
 // InfoResponse exposes runtime metadata for diagnostics and status UIs.
 type InfoResponse struct {
-	Service       string        `json:"service"`
-	Version       string        `json:"version"`
-	Environment   string        `json:"environment"`
-	GoVersion     string        `json:"go_version"`
-	OS            string        `json:"os"`
-	Arch          string        `json:"arch"`
-	NumCPU        int           `json:"num_cpu"`
-	StartedAt     string        `json:"started_at"`
-	UptimeSeconds int64         `json:"uptime_seconds"`
-	Database      *DatabaseInfo `json:"database,omitempty"`
+	Service       string             `json:"service"`
+	Version       string             `json:"version"`
+	Environment   string             `json:"environment"`
+	GoVersion     string             `json:"go_version"`
+	OS            string             `json:"os"`
+	Arch          string             `json:"arch"`
+	NumCPU        int                `json:"num_cpu"`
+	StartedAt     string             `json:"started_at"`
+	UptimeSeconds int64              `json:"uptime_seconds"`
+	Database      *DatabaseInfo      `json:"database,omitempty"`
+	Python        *PythonRuntimeInfo `json:"python,omitempty"`
 }
 
 // Health responds with service liveness state.
@@ -109,13 +125,24 @@ func (h *SystemHandler) Ready(w http.ResponseWriter, r *http.Request) {
 		checks["postgres"] = "ok"
 	}
 
+	if h.python != nil {
+		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		defer cancel()
+
+		if _, err := h.python.Info(ctx); err != nil {
+			checks["python"] = "degraded"
+		} else {
+			checks["python"] = "ok"
+		}
+	}
+
 	response.OK(w, r, ReadyResponse{
 		Status: "ready",
 		Checks: checks,
 	})
 }
 
-// Info responds with Go runtime, service, and PostgreSQL metadata.
+// Info responds with Go runtime, service, PostgreSQL, and Python service metadata.
 func (h *SystemHandler) Info(w http.ResponseWriter, r *http.Request) {
 	var dbInfo *DatabaseInfo
 	if h.db != nil {
@@ -130,6 +157,26 @@ func (h *SystemHandler) Info(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	var pyInfo *PythonRuntimeInfo
+	if h.python != nil {
+		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		defer cancel()
+
+		info, err := h.python.Info(ctx)
+		if err == nil && info != nil {
+			pyInfo = &PythonRuntimeInfo{
+				Service:   info.Service,
+				Connected: true,
+				Version:   "Python " + info.PythonVersion,
+			}
+		} else {
+			pyInfo = &PythonRuntimeInfo{
+				Service:   "tiktokup-python",
+				Connected: false,
+			}
+		}
+	}
+
 	response.OK(w, r, InfoResponse{
 		Service:       h.cfg.AppName,
 		Version:       h.cfg.AppVersion,
@@ -141,5 +188,6 @@ func (h *SystemHandler) Info(w http.ResponseWriter, r *http.Request) {
 		StartedAt:     h.startedAt.Format(time.RFC3339),
 		UptimeSeconds: int64(time.Since(h.startedAt).Seconds()),
 		Database:      dbInfo,
+		Python:        pyInfo,
 	})
 }

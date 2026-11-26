@@ -13,6 +13,7 @@ import (
 
 	"tiktokup/backend/internal/config"
 	"tiktokup/backend/internal/handler"
+	"tiktokup/backend/internal/pythonclient"
 	"tiktokup/backend/internal/router"
 )
 
@@ -29,14 +30,32 @@ func (s stubDB) ServerVersion(context.Context) (string, error) {
 	return s.version, nil
 }
 
-func newTestRouter(db handler.DatabaseInspector) http.Handler {
+type stubPython struct {
+	err     error
+	version string
+}
+
+func (s stubPython) Info(context.Context) (*pythonclient.ServiceInfo, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	return &pythonclient.ServiceInfo{
+		Service:       "tiktokup-python",
+		PythonVersion: s.version,
+	}, nil
+}
+
+func newTestRouter(db handler.DatabaseInspector, py handler.PythonInspector) http.Handler {
 	cfg := config.Load()
 	logger := slog.New(slog.NewJSONHandler(io.Discard, nil))
-	return router.New(cfg, logger, db)
+	return router.New(cfg, logger, db, py)
 }
 
 func TestSystemEndpoints(t *testing.T) {
-	h := newTestRouter(stubDB{version: "PostgreSQL 18.6"})
+	h := newTestRouter(
+		stubDB{version: "PostgreSQL 18.6"},
+		stubPython{version: "3.13.9"},
+	)
 
 	tests := []struct {
 		name           string
@@ -79,8 +98,11 @@ func TestSystemEndpoints(t *testing.T) {
 	}
 }
 
-func TestInfoReturnsGoAndPostgresMetadata(t *testing.T) {
-	h := newTestRouter(stubDB{version: "PostgreSQL 18.6"})
+func TestInfoReturnsGoPostgresAndPythonMetadata(t *testing.T) {
+	h := newTestRouter(
+		stubDB{version: "PostgreSQL 18.6"},
+		stubPython{version: "3.13.9"},
+	)
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/info", nil)
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
@@ -89,16 +111,18 @@ func TestInfoReturnsGoAndPostgresMetadata(t *testing.T) {
 		t.Fatalf("expected 200, got %d", rec.Code)
 	}
 	body := rec.Body.String()
-	if !strings.Contains(body, "go1.26") {
-		t.Fatalf("expected response to report go1.26 runtime, got: %s", body)
-	}
-	if !strings.Contains(body, "PostgreSQL 18.6") {
-		t.Fatalf("expected response to report PostgreSQL 18.6, got: %s", body)
+	for _, needle := range []string{"go1.26", "PostgreSQL 18.6", "Python 3.13.9"} {
+		if !strings.Contains(body, needle) {
+			t.Fatalf("expected response to contain %q, got: %s", needle, body)
+		}
 	}
 }
 
 func TestReadyReturns503WhenDatabaseDown(t *testing.T) {
-	h := newTestRouter(stubDB{pingErr: errors.New("connection refused")})
+	h := newTestRouter(
+		stubDB{pingErr: errors.New("connection refused")},
+		stubPython{version: "3.13.9"},
+	)
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/ready", nil)
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)

@@ -3,6 +3,19 @@ services:
     ports:
       - "${POSTGRES_PORT:-5433}:5432"
 
+  python:
+    build:
+      context: ./python
+      dockerfile: Dockerfile
+      target: dev
+    ports:
+      - "${PYTHON_PORT:-8002}:8000"
+    volumes:
+      - ./python:/app
+    environment:
+      APP_ENV: development
+      LOG_LEVEL: debug
+
   backend:
     build:
       context: ./backend

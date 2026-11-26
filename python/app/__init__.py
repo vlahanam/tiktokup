@@ -1,0 +1,1 @@
+"""TikTokUp Python service package."""

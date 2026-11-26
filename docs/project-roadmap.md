@@ -20,6 +20,7 @@ flowchart LR
 **Mục tiêu**: Dựng bộ khung full-stack chuẩn mực, chạy hoàn toàn qua Docker, sẵn sàng phát triển tính năng ngay lập tức.
 
 - [x] Khởi tạo Backend **Golang 1.26** (`net/http`, `log/slog`, Clean/Layered architecture, graceful shutdown).
+- [x] Tích hợp **Python 3.13** (`python:3.13-slim`, `/opt/venv`, FastAPI + Uvicorn + `psycopg[binary]` + `scripts/` CLI runner + `ruff`/`pytest`) giao tiếp nội bộ với Go Backend và PostgreSQL.
 - [x] Tích hợp **PostgreSQL 18** (`postgres:18-alpine`) trong Docker Compose với persistent volume, `pgx/v5` connection pool, live readiness probe và transactional SQL migration runner (`schema_migrations`).
 - [x] Xây dựng Middleware chuẩn (`Recover`, `RequestID`, `Logger`, `CORS`) và JSON Response Envelope thống nhất.
 - [x] Cung cấp các endpoint hệ thống (`/health`, `/api/v1/health`, `/api/v1/ready`, `/api/v1/info`) kèm bộ unit tests.

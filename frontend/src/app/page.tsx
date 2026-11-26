@@ -8,6 +8,7 @@ export default function HomePage() {
       <section className="space-y-3">
         <div className="flex flex-wrap items-center gap-2">
           <Badge>Go 1.26</Badge>
+          <Badge variant="secondary">Python 3.13</Badge>
           <Badge variant="secondary">PostgreSQL 18</Badge>
           <Badge variant="secondary">Next.js 16 + TypeScript</Badge>
           <Badge variant="secondary">Shadcn UI</Badge>
@@ -19,9 +20,9 @@ export default function HomePage() {
           TikTokUp Base Platform
         </h1>
         <p className="max-w-2xl text-muted-foreground">
-          Production-ready Dockerized monorepo foundation featuring a clean Go
-          1.26 HTTP API, PostgreSQL 18 database, Next.js App Router + Shadcn UI
-          frontend, and an Nginx reverse proxy entrypoint.
+          Production-ready Dockerized monorepo foundation featuring a Go 1.26
+          HTTP API, Python 3.13 service/runtime, PostgreSQL 18 database,
+          Next.js App Router + Shadcn UI frontend, and an Nginx reverse proxy.
         </p>
       </section>
 
